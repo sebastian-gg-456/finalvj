@@ -1,158 +1,499 @@
-// URL to explain PHASER scene: https://rexrainbow.github.io/phaser3-rex-notes/docs/site/scene/
-
 export default class Game extends Phaser.Scene {
   constructor() {
-    super("game");
-  }
-
-  init() {
+    super("Game");
+    this.platformSpacing = 180;
+    this.platformMinWidth = 100;
+    this.platformMaxWidth = 350;
+    this.platforms = null;
+    this.player = null;
+    this.maxY = 0;
+    this.jumpVelocity = -700;
+    this.firstPlatformY = 0;
+    this.firstPlatformX = 0;
+    this.angelAlive = false;
     this.score = 0;
+    this.metros = 0;
+    this.lastEnemyRespawnMeters = 0;
+    this.gameOverShown = false;
   }
 
   preload() {
-    this.load.tilemapTiledJSON("map", "public/assets/tilemap/map.json");
-    this.load.image("tileset", "public/assets/texture.png");
-    this.load.image("star", "public/assets/star.png");
-
-    this.load.spritesheet("dude", "./public/assets/dude.png", {
-      frameWidth: 32,
-      frameHeight: 48,
-    });
+    this.load.image("platform", "https://dummyimage.com/400x40/444/fff.png&text=+");
+    this.load.image("player", "https://dummyimage.com/80x80/09f/fff.png&text=^");
+    this.load.image("angel", "https://dummyimage.com/60x60/fff/000.png&text=A");
+    this.load.image("angel_bow", "https://dummyimage.com/60x60/0ff/000.png&text=AB");
+    this.load.image("demon", "https://dummyimage.com/60x60/f00/fff.png&text=D");
+    this.load.image("demon_angel", "https://dummyimage.com/60x60/ff0/000.png&text=DA");
+    this.load.image("laser", "https://dummyimage.com/20x8/0ff/fff.png&text=L");
+    this.load.image("arrow", "https://dummyimage.com/30x8/964B00/fff.png&text=F");
+    this.load.image("fireball", "https://dummyimage.com/20x20/f80/fff.png&text=F");
   }
 
   create() {
-    const map = this.make.tilemap({ key: "map" });
+    this.enemies = this.physics.add.group(); // <-- Mueve esto antes de crear plataformas
+    this.projectiles = this.physics.add.group();
+    this.platforms = this.physics.add.staticGroup();
 
-    // Parameters are the name you gave the tileset in Tiled and then the key of the tileset image in
-    // Phaser's cache (i.e. the name you used in preload)
-    const tileset = map.addTilesetImage("tileset", "tileset");
+    // Plataformas iniciales
+    let y = this.scale.height - 100;
+    let firstPlatformSet = false;
+    for (let i = 0; i < 7; i++) {
+      const platforms = this.generatePlatformRow(y);
+      if (!firstPlatformSet && platforms && platforms.length > 0) {
+        this.firstPlatformX = platforms[0].x;
+        this.firstPlatformY = platforms[0].y;
+        firstPlatformSet = true;
+      }
+      y -= this.platformSpacing;
+    }
 
-    // Parameters: layer name (or index) from Tiled, tileset, x, y
-    const belowLayer = map.createLayer("Fondo", tileset, 0, 0);
-    const platformLayer = map.createLayer("Plataformas", tileset, 0, 0);
-    const objectsLayer = map.getObjectLayer("Objetos");
+    // El jugador aparece sobre la primera plataforma
+    this.player = this.physics.add.sprite(this.firstPlatformX, this.firstPlatformY - 60, "player");
+    this.player.setBounce(0);
+    this.player.setCollideWorldBounds(false);
 
-    // Find in the Object Layer, the name "dude" and get position
-    const spawnPoint = map.findObject(
-      "Objetos",
-      (obj) => obj.name === "player"
-    );
-    console.log("spawnPoint", spawnPoint);
+    // Texto identificador sobre el jugador
+    this.playerLabel = this.add.text(0, 0, "JUGADOR", { font: "20px Arial", fill: "#00f" }).setOrigin(0.5);
 
-    this.player = this.physics.add.sprite(spawnPoint.x, spawnPoint.y, "dude");
-
-    this.player.setBounce(0.2);
-    this.player.setCollideWorldBounds(true);
-
-    this.anims.create({
-      key: "left",
-      frames: this.anims.generateFrameNumbers("dude", { start: 0, end: 3 }),
-      frameRate: 10,
-      repeat: -1,
-    });
-
-    this.anims.create({
-      key: "turn",
-      frames: [{ key: "dude", frame: 4 }],
-      frameRate: 20,
-    });
-
-    this.anims.create({
-      key: "right",
-      frames: this.anims.generateFrameNumbers("dude", { start: 5, end: 8 }),
-      frameRate: 10,
-      repeat: -1,
-    });
+    this.physics.add.collider(this.player, this.platforms);
+    this.physics.add.overlap(this.player, this.enemies, this.handlePlayerEnemy, null, this);
+    this.physics.add.overlap(this.player, this.projectiles, this.handlePlayerProjectile, null, this);
 
     this.cursors = this.input.keyboard.createCursorKeys();
-    this.keyR = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.R);
 
-    platformLayer.setCollisionByProperty({ esColisionable: true });
-    this.physics.add.collider(this.player, platformLayer);
+    this.cameras.main.startFollow(this.player, false, 1, 1, 0, 300);
+    this.cameras.main.setDeadzone(this.scale.width, this.scale.height / 2);
+    this.cameras.main.setBackgroundColor(0x2b1a0f); // Marrón oscuro tipo infierno, no choca con sprites
 
-    // tiles marked as colliding
-    /*
-    const debugGraphics = this.add.graphics().setAlpha(0.75);
-    platformLayer.renderDebug(debugGraphics, {
-      tileColor: null, // Color of non-colliding tiles
-      collidingTileColor: new Phaser.Display.Color(243, 134, 48, 255), // Color of colliding tiles
-      faceColor: new Phaser.Display.Color(40, 39, 37, 255), // Color of colliding face edges
-    });
-    */
+    this.maxY = this.player.y;
 
-    // Create empty group of starts
-    this.stars = this.physics.add.group();
-
-    // find object layer
-    // if type is "stars", add to stars group
-    objectsLayer.objects.forEach((objData) => {
-      console.log(objData);
-      const { x = 0, y = 0, name, type } = objData;
-      switch (type) {
-        case "star": {
-          // add star to scene
-          // console.log("estrella agregada: ", x, y);
-          const star = this.stars.create(x, y, "star");
-          star.setBounceY(Phaser.Math.FloatBetween(0.4, 0.8));
-          break;
-        }
-      }
+    // Aparición aleatoria de enemigos cada 3 segundos
+    this.time.addEvent({
+      delay: 3000,
+      callback: () => {
+        const y = this.cameras.main.scrollY - 100;
+        this.addEnemy(y);
+      },
+      callbackScope: this,
+      loop: true
     });
 
-    // add collision between player and stars
-    this.physics.add.collider(
-      this.player,
-      this.stars,
-      this.collectStar,
-      null,
-      this
-    );
-    // add overlap between stars and platform layer
-    this.physics.add.collider(this.stars, platformLayer);
+    // Texto de puntuación
+    // Puntos arriba izquierda
+    this.scoreText = this.add.text(40, 30, "Puntos: 0", {
+      font: "32px Arial",
+      fill: "#fff",
+      stroke: "#000",
+      strokeThickness: 4
+    }).setOrigin(0, 0).setScrollFactor(0);
 
-    this.scoreText = this.add.text(16, 16, `Score: ${this.score}`, {
-      fontSize: "32px",
-      fill: "#000",
+    // Metros arriba derecha
+    this.metrosText = this.add.text(this.scale.width - 40, 30, "Metros: 0", {
+      font: "32px Arial",
+      fill: "#fff",
+      stroke: "#000",
+      strokeThickness: 4
+    }).setOrigin(1, 0).setScrollFactor(0);
+
+    this.input.keyboard.on('keydown-R', () => {
+      this.score = 0;
+      this.scene.restart();
     });
+    this.gameOverShown = false;
   }
 
-  update() {
-    // update game objects
+  update(time, delta) {
+    // Movimiento horizontal
     if (this.cursors.left.isDown) {
-      this.player.setVelocityX(-160);
-
-      this.player.anims.play("left", true);
+      this.player.setVelocityX(-400);
     } else if (this.cursors.right.isDown) {
-      this.player.setVelocityX(160);
-
-      this.player.anims.play("right", true);
+      this.player.setVelocityX(400);
     } else {
       this.player.setVelocityX(0);
-
-      this.player.anims.play("turn");
     }
 
-    if (this.cursors.up.isDown) {
-      this.player.setVelocityY(-330);
+    // Salto
+    if (
+      Phaser.Input.Keyboard.JustDown(this.cursors.up) &&
+      this.player.body.touching.down
+    ) {
+      this.player.setVelocityY(this.jumpVelocity);
     }
 
-    if (Phaser.Input.Keyboard.JustDown(this.keyR)) {
-      console.log("Phaser.Input.Keyboard.JustDown(this.keyR)");
+    // Generar nuevas plataformas si el jugador sube
+    if (this.player.y < this.maxY - this.platformSpacing) {
+      this.generatePlatformRow(this.player.y - this.platformSpacing * 2);
+      this.maxY = this.player.y;
+      this.removeOffscreenPlatforms();
+    }
+
+    // Si el jugador cae por debajo de la pantalla, reinicia
+    if (this.player.y > this.cameras.main.scrollY + this.scale.height) {
       this.scene.restart();
+    }
+
+    // Movimiento de enemigos voladores
+    this.enemies.getChildren().forEach(enemy => {
+      if (!enemy || !enemy.active) return;
+
+      // Si el enemigo está muy abajo respecto al jugador, fuerza un destino arriba del jugador
+      if (
+        !enemy.target ||
+        enemy.y > this.player.y + 200 || // Si está muy abajo, fuerza destino arriba
+        enemy.y < this.player.y - 600 || // Si está muy arriba, fuerza destino más cerca
+        (enemy.target && enemy.target.y > this.player.y - 100)
+      ) {
+        enemy.target = {
+          x: Phaser.Math.Between(100, this.scale.width - 100),
+          y: this.player.y - Phaser.Math.Between(120, 300)
+        };
+        enemy.speed = Phaser.Math.Between(320, 420);
+      }
+
+      const dx = enemy.target.x - enemy.x;
+      const dy = enemy.target.y - enemy.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      if (dist > 10) {
+        enemy.setVelocity((dx / dist) * enemy.speed, (dy / dist) * enemy.speed);
+      } else {
+        enemy.setVelocity(0, 0);
+        enemy.target = null;
+      }
+
+      if (enemy.label) enemy.label.setPosition(enemy.x, enemy.y - 40);
+    });
+
+    // Actualiza etiquetas de enemigos y jugador
+    this.playerLabel.setPosition(this.player.x, this.player.y - 50);
+    this.enemies.getChildren().forEach(enemy => {
+      if (!enemy.label) {
+        let text = "";
+        if (enemy.type === "angel") text = "ÁNGEL";
+        else if (enemy.type === "angel_bow") text = "ÁNGEL ARCO";
+        else if (enemy.type === "demon") text = "DEMONIO";
+        else if (enemy.type === "demon_angel") text = "DEMONIO ÁNGEL";
+        enemy.label = this.add.text(enemy.x, enemy.y - 40, text, { font: "16px Arial", fill: "#000" }).setOrigin(0.5);
+      }
+      if (enemy.label) enemy.label.setPosition(enemy.x, enemy.y - 40);
+    });
+
+    // Siempre mantener al menos 4 enemigos activos
+    if (this.enemies.countActive(true) < 4) {
+      let spawnX;
+      do {
+        spawnX = Phaser.Math.Between(100, this.scale.width - 100);
+      } while (Math.abs(spawnX - this.player.x) < 350); // Ahora 350px de distancia mínima
+      const spawnY = this.player.y - Phaser.Math.Between(250, 450); // Un poco más arriba
+      this.addEnemy(spawnY);
+    }
+
+    // Actualiza la puntuación y metros
+    this.metros += 0.1 * delta / 1000;
+    this.scoreText.setText('Puntuación: ' + Math.floor(this.score));
+    this.metrosText.setText('Metros: ' + Math.floor(this.metros));
+
+    // Calcula metros recorridos (puedes ajustar el factor si quieres que suba más lento/rápido)
+    this.metros = Math.max(0, Math.floor((this.firstPlatformY - this.player.y) / 10));
+    this.metrosText.setText("Metros: " + this.metros);
+    this.scoreText.setText("Puntos: " + this.score);
+
+    // Cada 175 metros, respawnea enemigos
+    if (this.metros - this.lastEnemyRespawnMeters >= 175) {
+      // Destruye todos los enemigos actuales
+      this.enemies.getChildren().forEach(enemy => {
+        if (enemy.label) enemy.label.destroy();
+        enemy.destroy();
+      });
+      // Spawnea 4 enemigos nuevos alrededor del jugador (no solo en Y)
+      for (let i = 0; i < 4; i++) {
+        let spawnX, spawnY, tries = 0;
+        do {
+          spawnX = Phaser.Math.Between(100, this.scale.width - 100);
+          spawnY = this.player.y + Phaser.Math.Between(-250, 250); // Alrededor del jugador
+          tries++;
+        } while (
+          (Math.abs(spawnX - this.player.x) < 200 ||
+           this.enemies.getChildren().some(e => e && typeof e.x === "number" && Math.abs(e.x - spawnX) < 150))
+          && tries < 20
+        );
+        this.addEnemy(spawnY, spawnX); // <-- pasa X también
+      }
+      this.lastEnemyRespawnMeters = this.metros;
     }
   }
 
-  collectStar(player, star) {
-    star.disableBody(true, true);
+  // Genera enemigos aleatorios en la altura dada
+  addEnemy(y, x = null) {
+    // Solo un ángel sin arco a la vez
+    let enemyTypes = ["angel_bow", "demon", "demon_angel"];
+    if (!this.angelAlive) enemyTypes.push("angel");
+    const type = Phaser.Utils.Array.GetRandom(enemyTypes);
+    if (type === "angel" && this.angelAlive) return;
 
-    this.score += 10;
-    this.scoreText.setText(`Score: ${this.score}`);
+    if (x === null) {
+      let tries = 0;
+      do {
+        x = Phaser.Math.Between(100, this.scale.width - 100);
+        tries++;
+      } while (Math.abs(x - this.player.x) < 200 && tries < 20);
+    }
+    let enemy = this.enemies.create(x, y, type);
+    enemy.type = type;
+    enemy.setCollideWorldBounds(false);
+    enemy.setBounce(0);
+    enemy.patrolTarget = Phaser.Math.Between(100, this.scale.width - 100); // <-- Nueva propiedad de patrulla
+    enemy.patrolTargetY = Phaser.Math.Between(this.player.y - 300, this.player.y + 300);
 
-    if (this.stars.countActive(true) === 0) {
-      //  A new batch of stars to collect
-      this.stars.children.iterate(function (child) {
-        child.enableBody(true, child.x, 0, true, true);
+    // Comportamiento según tipo
+    if (type === "angel") {
+      this.angelAlive = true;
+      this.time.addEvent({
+        delay: 12000, // 12 segundos entre cada láser
+        callback: () => this.shootLaser(enemy),
+        callbackScope: this,
+        loop: true
+      });
+      enemy.on('destroy', () => { this.angelAlive = false; });
+    } else if (type === "angel_bow") {
+      this.time.addEvent({
+        delay: 1500,
+        callback: () => this.shootArrow(enemy),
+        callbackScope: this,
+        loop: true
+      });
+    } else if (type === "demon") {
+      this.time.addEvent({
+        delay: 2000,
+        callback: () => this.demonAttack(enemy),
+        callbackScope: this,
+        loop: true
+      });
+    } else if (type === "demon_angel") {
+      this.time.addEvent({
+        delay: 12000, // 12 segundos entre cada láser (más tiempo de recarga)
+        callback: () => this.shootLaser(enemy),
+        callbackScope: this,
+        loop: true
+      });
+      
+      enemy.extraSpeed = 1.7; // Factor de velocidad extra para el demonio ángel
+    }
+  }
+
+  // Disparo de láser (ángel y demonio ángel)
+  shootLaser(enemy) {
+    if (!enemy.active) return;
+    // Láser vertical mucho más largo
+    const laser = this.add.rectangle(
+      enemy.x,
+      this.cameras.main.scrollY + this.scale.height, // centro más arriba
+      40,
+      this.scale.height * 2, // el doble de alto
+      0x00ffff
+    ).setOrigin(0.5);
+    this.physics.add.existing(laser, true);
+
+    const overlap = this.physics.add.overlap(this.player, laser, () => {
+      this.scene.restart();
+    }, null, this);
+
+    this.time.delayedCall(2000, () => {
+      overlap.destroy();
+      laser.destroy();
+    });
+  }
+
+  // Disparo de flecha (ángel con arco)
+  shootArrow(enemy) {
+    if (!enemy.active) return;
+    // Predice la posición futura del jugador (simplemente usa su velocidad actual)
+    const player = this.player;
+    const dx = (player.x + player.body.velocity.x * 0.3) - enemy.x;
+    const dy = (player.y + player.body.velocity.y * 0.3) - enemy.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const speed = 350;
+    const arrow = this.projectiles.create(enemy.x, enemy.y, "arrow");
+    arrow.setVelocity((dx / dist) * speed, (dy / dist) * speed);
+    arrow.body.allowGravity = false;
+  }
+
+  // Ataque demonio (embestida y bola de fuego)
+  demonAttack(enemy) {
+    if (!enemy.active) return;
+    // Embestida hacia el jugador
+    const dx = this.player.x - enemy.x;
+    const dy = this.player.y - enemy.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const dirX = dx / dist;
+    const dirY = dy / dist;
+    enemy.setVelocity(dirX * 200, dirY * 200);
+
+    // Bola de fuego tipo misil
+    const player = this.player;
+    const predX = player.x + player.body.velocity.x * 0.3;
+    const predY = player.y + player.body.velocity.y * 0.3;
+    const dx2 = predX - enemy.x;
+    const dy2 = predY - enemy.y;
+    const dist2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
+    const fireball = this.projectiles.create(enemy.x, enemy.y, "fireball");
+    fireball.setVelocity((dx2 / dist2) * 300, (dy2 / dist2) * 300);
+    fireball.body.allowGravity = false;
+
+    // Detener embestida después de un tiempo
+    this.time.delayedCall(800, () => {
+      if (enemy.active) enemy.setVelocity(0, 0);
+    });
+  }
+
+  // Colisión jugador-enemigo
+  handlePlayerEnemy(player, enemy) {
+    const playerBottom = player.y + (player.height || player.displayHeight) / 2;
+    if (
+      player.body.velocity.y > 0 &&
+      playerBottom < enemy.y
+    ) {
+      // Sumar puntos según tipo
+      let puntos = 0;
+      if (enemy.type === "demon_angel") puntos = 1000;
+      else if (enemy.type === "angel") puntos = 500;         // antes 300
+      else if (enemy.type === "angel_bow") puntos = 120;      // antes 200
+      else if (enemy.type === "demon") puntos = 250;          // antes 500
+      this.score += puntos;
+
+      if (enemy.type === "angel") this.angelAlive = false;
+      if (enemy.label) enemy.label.destroy();
+      enemy.destroy();
+      player.setVelocityY(-400); // Rebote pequeño
+    } else {
+      this.score = 0;
+      this.showGameOver();
+      this.physics.pause();
+      this.input.keyboard.once('keydown-R', () => {
+        this.scene.restart();
       });
     }
   }
+
+  // Colisión jugador-proyectil
+  handlePlayerProjectile(player, projectile) {
+    this.score = 0;
+    this.showGameOver();
+    this.physics.pause();
+    this.input.keyboard.once('keydown-R', () => {
+      this.scene.restart();
+    });
+  }
+
+  // Modifica tu generación de plataformas para agregar enemigos aleatorios:
+  addPlatform(y) {
+    const width = Phaser.Math.Between(this.platformMinWidth, this.platformMaxWidth);
+    const x = Phaser.Math.Between(-width / 2, this.scale.width + width / 2);
+    const platform = this.platforms.create(x, y, "platform");
+    platform.displayWidth = width;
+    platform.refreshBody();
+    platform.body.checkCollision.down = false;
+    platform.body.checkCollision.left = true;
+    platform.body.checkCollision.right = true;
+
+    // 30% de probabilidad de generar un enemigo sobre la plataforma
+    if (Phaser.Math.Between(1, 100) <= 30) {
+      this.addEnemy(y - 40);
+    }
+
+    return platform;
+  }
+
+  generatePlatformRow(y) {
+    const numPlatforms = Phaser.Math.Between(1, 2); // Menos plataformas por fila
+    const usedRanges = [];
+    const platforms = [];
+    for (let i = 0; i < numPlatforms; i++) {
+      let width = Phaser.Math.Between(this.platformMinWidth, this.platformMaxWidth);
+      let x, tries = 0;
+      do {
+        x = Phaser.Math.Between(width / 2, this.scale.width - width / 2);
+        tries++;
+      } while (
+        usedRanges.some(range => Math.abs(x - range) < width + 80) && tries < 10
+      );
+      usedRanges.push(x);
+      const platform = this.platforms.create(x, y, "platform");
+      platform.displayWidth = width;
+      platform.refreshBody();
+      platform.body.checkCollision.down = false;
+      platform.body.checkCollision.left = true;
+      platform.body.checkCollision.right = true;
+      platforms.push(platform);
+    }
+    return platforms;
+  }
+
+  removeOffscreenPlatforms() {
+    this.platforms.children.iterate((platform) => {
+      if (!platform) return;
+      if (platform.y > this.player.y + this.scale.height) {
+        this.platforms.remove(platform, true, true);
+      }
+    });
+  }
+
+  showGameOver() {
+    if (this.gameOverShown) return;
+    this.gameOverShown = true;
+
+    // Detén todos los eventos de enemigos
+    if (this.enemyEvents) {
+      this.enemyEvents.forEach(ev => ev.remove());
+      this.enemyEvents = [];
+    }
+
+    // Fondo semi-transparente
+    this.add.rectangle(
+      this.cameras.main.centerX,
+      this.cameras.main.centerY,
+      this.scale.width,
+      this.scale.height,
+      0x000000,
+      0.6
+    ).setScrollFactor(0);
+
+    // Texto principal
+    this.add.text(
+      this.cameras.main.centerX,
+      this.cameras.main.centerY - 80,
+      "GAME OVER",
+      { font: "64px Arial", fill: "#fff", stroke: "#000", strokeThickness: 8 }
+    ).setOrigin(0.5).setScrollFactor(0);
+
+    // Puntuación final
+    this.add.text(
+      this.cameras.main.centerX,
+      this.cameras.main.centerY,
+      `Puntos: ${this.score}\nMetros: ${this.metros}`,
+      { font: "36px Arial", fill: "#fff", stroke: "#000", strokeThickness: 6, align: "center" }
+    ).setOrigin(0.5).setScrollFactor(0);
+
+    // Botón de reinicio
+    this.add.text(
+      this.cameras.main.centerX,
+      this.cameras.main.centerY + 80,
+      "Pulsa R para reiniciar",
+      { font: "28px Arial", fill: "#fff", stroke: "#000", strokeThickness: 4 }
+    ).setOrigin(0.5).setScrollFactor(0);
+
+    // Botón de volver al inicio
+    this.add.text(
+      this.cameras.main.centerX,
+      this.cameras.main.centerY + 130,
+      "Pulsa Q para volver al inicio",
+      { font: "24px Arial", fill: "#fff", stroke: "#000", strokeThickness: 3 }
+    ).setOrigin(0.5).setScrollFactor(0);
+
+    // Tecla Q para volver al inicio (puedes cambiar la lógica según tu estructura)
+    this.input.keyboard.once('keydown-Q', () => {
+      this.scene.start('Menu'); // Cambia 'Menu' por el nombre de tu escena de inicio
+    });
+  }
 }
+
