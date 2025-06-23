@@ -15,6 +15,11 @@ export default class Game extends Phaser.Scene {
     this.metros = 0;
     this.lastEnemyRespawnMeters = 0;
     this.gameOverShown = false;
+
+    // Nuevas propiedades para pausa
+    this.isPaused = false;
+    this.pauseOverlay = null;
+    this.pauseTexts = [];
   }
 
   preload() {
@@ -81,18 +86,20 @@ export default class Game extends Phaser.Scene {
     // Texto de puntuación
     // Puntos arriba izquierda
     this.scoreText = this.add.text(40, 30, "Puntos: 0", {
-      font: "32px Arial",
-      fill: "#fff",
+      fontFamily: 'VT323',
+      fontSize: "64px",
+      color: "#fff",
       stroke: "#000",
-      strokeThickness: 4
+      strokeThickness: 8
     }).setOrigin(0, 0).setScrollFactor(0);
 
     // Metros arriba derecha
     this.metrosText = this.add.text(this.scale.width - 40, 30, "Metros: 0", {
-      font: "32px Arial",
-      fill: "#fff",
+      fontFamily: 'VT323',
+      fontSize: "64px",
+      color: "#fff",
       stroke: "#000",
-      strokeThickness: 4
+      strokeThickness: 8
     }).setOrigin(1, 0).setScrollFactor(0);
 
     this.input.keyboard.on('keydown-R', () => {
@@ -100,9 +107,26 @@ export default class Game extends Phaser.Scene {
       this.scene.restart();
     });
     this.gameOverShown = false;
+
+    // En create(), solo una vez:
+    this.input.keyboard.on('keydown-ESC', () => {
+      if (!this.isPaused) {
+        this.showPauseMenu();
+      } else {
+        this.hidePauseMenu();
+      }
+    });
+    this.input.keyboard.on('keydown-SPACE', () => {
+      if (this.isPaused) {
+        this.hidePauseMenu();
+      }
+    });
+
   }
 
   update(time, delta) {
+    if (this.isPaused) return; // Si está pausado, no actualiza nada
+
     // Movimiento horizontal
     if (this.cursors.left.isDown) {
       this.player.setVelocityX(-400);
@@ -120,6 +144,14 @@ export default class Game extends Phaser.Scene {
       this.player.setVelocityY(this.jumpVelocity);
     }
 
+    // BAJAR MÁS RÁPIDO EN EL AIRE
+    if (
+      this.cursors.down.isDown &&
+      !this.player.body.touching.down
+    ) {
+      this.player.setVelocityY(700); // Puedes ajustar el valor para más o menos velocidad de caída
+    }
+
     // Generar nuevas plataformas si el jugador sube
     if (this.player.y < this.maxY - this.platformSpacing) {
       this.generatePlatformRow(this.player.y - this.platformSpacing * 2);
@@ -127,9 +159,14 @@ export default class Game extends Phaser.Scene {
       this.removeOffscreenPlatforms();
     }
 
-    // Si el jugador cae por debajo de la pantalla, reinicia
+    // Si el jugador cae por debajo de la pantalla, pierde automáticamente
     if (this.player.y > this.cameras.main.scrollY + this.scale.height) {
-      this.scene.restart();
+      this.showGameOver();
+      this.physics.pause();
+      this.input.keyboard.once('keydown-R', () => {
+        this.score = 0; // <-- Solo aquí se reinicia el puntaje
+        this.scene.restart();
+      });
     }
 
     // Movimiento de enemigos voladores
@@ -225,10 +262,35 @@ export default class Game extends Phaser.Scene {
 
   // Genera enemigos aleatorios en la altura dada
   addEnemy(y, x = null) {
+    // Cuenta los enemigos actuales
+    const enemies = this.enemies.getChildren().filter(e => e.active);
+    if (enemies.length >= 3) return; // Máximo 3 enemigos
+
+    // Cuenta los que disparan
+    const shooters = enemies.filter(e => e.type === "angel_bow" || e.type === "demon");
+    if (shooters.length >= 2) {
+      // Solo puede agregar un ángel o demonio ángel
+      if (enemies.some(e => e.type === "angel" || e.type === "demon_angel")) return;
+    }
+
+    // Solo puede haber un ángel o demonio ángel a la vez
+    if (enemies.some(e => e.type === "angel") && enemies.some(e => e.type === "demon_angel")) return;
+
+    // Decide el tipo de enemigo a spawnear
+    let possibleTypes = [];
+    if (!enemies.some(e => e.type === "angel") && !enemies.some(e => e.type === "demon_angel")) {
+      possibleTypes.push("angel", "demon_angel");
+    }
+    if (shooters.length < 2) {
+      possibleTypes.push("angel_bow", "demon");
+    }
+    if (possibleTypes.length === 0) return;
+
+    const type = Phaser.Utils.Array.GetRandom(possibleTypes);
+
     // Solo un ángel sin arco a la vez
     let enemyTypes = ["angel_bow", "demon", "demon_angel"];
     if (!this.angelAlive) enemyTypes.push("angel");
-    const type = Phaser.Utils.Array.GetRandom(enemyTypes);
     if (type === "angel" && this.angelAlive) return;
 
     if (x === null) {
@@ -240,6 +302,7 @@ export default class Game extends Phaser.Scene {
     }
     let enemy = this.enemies.create(x, y, type);
     enemy.type = type;
+
     enemy.setCollideWorldBounds(false);
     enemy.setBounce(0);
     enemy.patrolTarget = Phaser.Math.Between(100, this.scale.width - 100); // <-- Nueva propiedad de patrulla
@@ -366,10 +429,10 @@ export default class Game extends Phaser.Scene {
       enemy.destroy();
       player.setVelocityY(-400); // Rebote pequeño
     } else {
-      this.score = 0;
       this.showGameOver();
       this.physics.pause();
       this.input.keyboard.once('keydown-R', () => {
+        this.score = 0; // <-- Solo aquí se reinicia el puntaje
         this.scene.restart();
       });
     }
@@ -377,10 +440,10 @@ export default class Game extends Phaser.Scene {
 
   // Colisión jugador-proyectil
   handlePlayerProjectile(player, projectile) {
-    this.score = 0;
     this.showGameOver();
     this.physics.pause();
     this.input.keyboard.once('keydown-R', () => {
+      this.score = 0; // <-- Solo aquí se reinicia el puntaje
       this.scene.restart();
     });
   }
@@ -442,12 +505,6 @@ export default class Game extends Phaser.Scene {
     if (this.gameOverShown) return;
     this.gameOverShown = true;
 
-    // Detén todos los eventos de enemigos
-    if (this.enemyEvents) {
-      this.enemyEvents.forEach(ev => ev.remove());
-      this.enemyEvents = [];
-    }
-
     // Fondo semi-transparente
     this.add.rectangle(
       this.cameras.main.centerX,
@@ -455,45 +512,91 @@ export default class Game extends Phaser.Scene {
       this.scale.width,
       this.scale.height,
       0x000000,
-      0.6
+      0.7
     ).setScrollFactor(0);
 
-    // Texto principal
+    // Título
     this.add.text(
       this.cameras.main.centerX,
-      this.cameras.main.centerY - 80,
+      this.cameras.main.centerY - 220,
       "GAME OVER",
-      { font: "64px Arial", fill: "#fff", stroke: "#000", strokeThickness: 8 }
+      { fontFamily: 'VT323', fontSize: "120px", color: "#fff" }
     ).setOrigin(0.5).setScrollFactor(0);
 
-    // Puntuación final
+    // Puntos
     this.add.text(
+      this.cameras.main.centerX,
+      this.cameras.main.centerY - 60,
+      `Puntos: ${this.score}`,
+      { fontFamily: 'VT323', fontSize: "64px", color: "#fff" }
+    ).setOrigin(0.5).setScrollFactor(0);
+
+    // Metros
+    this.add.text(
+      this.cameras.main.centerX,
+      this.cameras.main.centerY + 40,
+      `Metros: ${this.metros}`,
+      { fontFamily: 'VT323', fontSize: "64px", color: "#fff" }
+    ).setOrigin(0.5).setScrollFactor(0);
+
+    // Instrucciones
+    this.add.text(
+      this.cameras.main.centerX,
+      this.cameras.main.centerY + 160,
+      "Pulsa R para reiniciar",
+      { fontFamily: 'VT323', fontSize: "44px", color: "#fff" }
+    ).setOrigin(0.5).setScrollFactor(0);
+
+    this.add.text(
+      this.cameras.main.centerX,
+      this.cameras.main.centerY + 220,
+      "Pulsa Q para volver al inicio",
+      { fontFamily: 'VT323', fontSize: "40px", color: "#fff" }
+    ).setOrigin(0.5).setScrollFactor(0);
+
+    this.input.keyboard.once('keydown-Q', () => {
+      this.scene.start('Menu');
+    });
+  }
+
+  showPauseMenu() {
+    if (this.isPaused) return;
+    this.isPaused = true;
+    this.physics.pause();
+
+    this.pauseOverlay = this.add.rectangle(
       this.cameras.main.centerX,
       this.cameras.main.centerY,
-      `Puntos: ${this.score}\nMetros: ${this.metros}`,
-      { font: "36px Arial", fill: "#fff", stroke: "#000", strokeThickness: 6, align: "center" }
-    ).setOrigin(0.5).setScrollFactor(0);
+      this.scale.width,
+      this.scale.height,
+      0x000000,
+      0.7
+    ).setScrollFactor(0);
 
-    // Botón de reinicio
-    this.add.text(
-      this.cameras.main.centerX,
-      this.cameras.main.centerY + 80,
-      "Pulsa R para reiniciar",
-      { font: "28px Arial", fill: "#fff", stroke: "#000", strokeThickness: 4 }
-    ).setOrigin(0.5).setScrollFactor(0);
+    this.pauseTexts = [
+      this.add.text(
+        this.cameras.main.centerX,
+        this.cameras.main.centerY - 100,
+        "PAUSA",
+        { fontFamily: 'VT323', fontSize: "120px", color: "#fff", stroke: "#000", strokeThickness: 14 }
+      ).setOrigin(0.5).setScrollFactor(0),
 
-    // Botón de volver al inicio
-    this.add.text(
-      this.cameras.main.centerX,
-      this.cameras.main.centerY + 130,
-      "Pulsa Q para volver al inicio",
-      { font: "24px Arial", fill: "#fff", stroke: "#000", strokeThickness: 3 }
-    ).setOrigin(0.5).setScrollFactor(0);
+      this.add.text(
+        this.cameras.main.centerX,
+        this.cameras.main.centerY + 60,
+        "Pulsa ESC o ESPACIO para continuar",
+        { fontFamily: 'VT323', fontSize: "56px", color: "#fff", stroke: "#000", strokeThickness: 6 }
+      ).setOrigin(0.5).setScrollFactor(0)
+    ];
+  }
 
-    // Tecla Q para volver al inicio (puedes cambiar la lógica según tu estructura)
-    this.input.keyboard.once('keydown-Q', () => {
-      this.scene.start('Menu'); // Cambia 'Menu' por el nombre de tu escena de inicio
-    });
+  hidePauseMenu() {
+    if (!this.isPaused) return;
+    this.isPaused = false;
+    this.physics.resume();
+    if (this.pauseOverlay) this.pauseOverlay.destroy();
+    this.pauseTexts.forEach(t => t.destroy());
+    this.pauseTexts = [];
   }
 }
 

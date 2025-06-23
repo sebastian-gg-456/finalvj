@@ -1,3 +1,4 @@
+import Menu from './scenes/Menu.js';
 import Game from "./scenes/Game.js";
 
 const config = {
@@ -23,7 +24,7 @@ const config = {
       debug: false,
     },
   },
-  scene: [Game],
+  scene: [Menu, Game], // Menu primero
 };
 
-window.game = new Phaser.Game(config);
+const game = new Phaser.Game(config);
