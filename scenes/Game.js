@@ -347,23 +347,36 @@ export default class Game extends Phaser.Scene {
   // Disparo de láser (ángel y demonio ángel)
   shootLaser(enemy) {
     if (!enemy.active) return;
-    // Láser vertical mucho más largo
-    const laser = this.add.rectangle(
-      enemy.x,
-      this.cameras.main.scrollY + this.scale.height, // centro más arriba
+
+    // Guarda la posición X donde se mostrará el aviso y el láser
+    const laserX = enemy.x;
+
+    // AVISO: Línea verde translúcida desde arriba de la cámara
+    const aviso = this.add.rectangle(
+      laserX,
+      this.cameras.main.scrollY,
       40,
-      this.scale.height * 2, // el doble de alto
-      0x00ffff
-    ).setOrigin(0.5);
-    this.physics.add.existing(laser, true);
+      this.scale.height * 2,
+      0x00ff00,
+      0.3
+    ).setOrigin(0.5, 0);
 
-    const overlap = this.physics.add.overlap(this.player, laser, () => {
-      this.scene.restart();
-    }, null, this);
+    // Después de 0.5 segundos, elimina el aviso y lanza el láser real en la MISMA posición
+    this.time.delayedCall(500, () => {
+      aviso.destroy();
 
-    this.time.delayedCall(2000, () => {
-      overlap.destroy();
-      laser.destroy();
+      // Láser real (azul, opaco) desde arriba, en la misma posición X
+      const laser = this.add.rectangle(
+        laserX,
+        this.cameras.main.scrollY,
+        40,
+        this.scale.height * 2,
+        0x00ffff
+      ).setOrigin(0.5, 0);
+      this.physics.add.existing(laser, true);
+
+      // Lógica de colisión y destrucción del láser
+      this.time.delayedCall(600, () => laser.destroy());
     });
   }
 
