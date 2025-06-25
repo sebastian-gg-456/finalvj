@@ -1,6 +1,3 @@
-import Menu from './scenes/Menu.js';
-import Game from "./scenes/Game.js";
-
 const config = {
   type: Phaser.AUTO,
   width: 2000,
@@ -8,23 +5,20 @@ const config = {
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
-    min: {
-      width: 2000,
-      height: 500,
-    },
-    max: {
-      width: 1600,
-      height: 1000,
-    },
+    min: { width: 2000, height: 500 },
+    max: { width: 1600, height: 1000 },
   },
   physics: {
     default: "arcade",
     arcade: {
-      gravity: { y: 450},
+      gravity: { y: 450 },
       debug: false,
     },
   },
-  scene: [Menu, Game], // Menu primero
+  input: {
+    gamepad: true // <--- ¡Esto es clave!
+  },
+  scene: [window.Menu, window.Game], // o solo window.Game si no tienes menú
 };
 
-const game = new Phaser.Game(config);
+window.game = new Phaser.Game(config);

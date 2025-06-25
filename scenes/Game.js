@@ -1,4 +1,4 @@
-export default class Game extends Phaser.Scene {
+class Game extends Phaser.Scene {
   constructor() {
     super("Game");
     this.platformSpacing = 180;
@@ -20,6 +20,9 @@ export default class Game extends Phaser.Scene {
     this.isPaused = false;
     this.pauseOverlay = null;
     this.pauseTexts = [];
+
+    this.lastRBPressed = false; // <-- Agregado aquí
+    this.lastLTPressed = false;
   }
 
   preload() {
@@ -33,8 +36,8 @@ export default class Game extends Phaser.Scene {
     this.load.image("arrow", "https://dummyimage.com/30x8/964B00/fff.png&text=F");
     this.load.image("fireball", "https://dummyimage.com/20x20/f80/fff.png&text=F");
   }
-
-  create() {
+;
+  ;create() {
     this.enemies = this.physics.add.group(); // <-- Mueve esto antes de crear plataformas
     this.projectiles = this.physics.add.group();
     this.platforms = this.physics.add.staticGroup();
@@ -122,21 +125,121 @@ export default class Game extends Phaser.Scene {
       }
     });
 
+    if (this.input && this.input.gamepad) {
+      this.input.gamepad.once('connected', pad => {
+        this.gamepad = pad;
+      });
+    }
+
+    // Cartel de controles
+    this.mostrandoCartelControles = true;
+    this.controlesText = this.add.text(
+      this.cameras.main.centerX,
+      this.cameras.main.centerY + 350, // Más abajo
+      'Pulsa "LT/E" para ver controles',
+      { fontFamily: 'VT323', fontSize: "56px", color: "#fff", stroke: "#000", strokeThickness: 6 }
+    ).setOrigin(0.5).setScrollFactor(0);
   }
 
   update(time, delta) {
-    if (this.isPaused) return; // Si está pausado, no actualiza nada
+    // --- Soporte para joystick estilo Phaser ---
+    if (this.input.gamepad && this.input.gamepad.total > 0) {
+      const pad = this.input.gamepad.getPad(0);
+      const rbPressed = pad.buttons[5].pressed;
+      if (rbPressed && !this.lastRBPressed) {
+        if (!this.isPaused) {
+          this.showPauseMenu();
+        } else {
+          this.hidePauseMenu();
+        }
+      }
+      this.lastRBPressed = rbPressed;
+    }
 
-    // Movimiento horizontal
-    if (this.cursors.left.isDown) {
+    // Al principio de update()
+    if (!this.isPaused && !this.mostrandoControles) {
+      // Tecla E
+      if (Phaser.Input.Keyboard.JustDown(this.input.keyboard.addKey('E'))) {
+        this.mostrandoControles = true;
+        this.showControlsMenu();
+        if (this.mostrandoCartelControles && this.controlesText) {
+          this.controlesText.destroy();
+          this.mostrandoCartelControles = false;
+        }
+        return;
+      }
+      // LT del mando
+      if (this.input.gamepad && this.input.gamepad.total > 0) {
+        const pad = this.input.gamepad.getPad(0);
+        if (pad && pad.buttons[6].pressed && !this.lastLTPressed) {
+          this.mostrandoControles = true;
+          this.showControlsMenu();
+          if (this.mostrandoCartelControles && this.controlesText) {
+            this.controlesText.destroy();
+            this.mostrandoCartelControles = false;
+          }
+          this.lastLTPressed = true;
+          return;
+        }
+        if (pad) this.lastLTPressed = pad.buttons[6].pressed;
+      }
+    }
+
+    if (this.isPaused) return;
+
+    // --- Movimiento con teclado ---
+    let moveX = 0;
+    if (this.cursors.left.isDown) moveX = -1;
+    else if (this.cursors.right.isDown) moveX = 1;
+
+    // --- Soporte para joystick estilo Phaser ---
+    if (this.input.gamepad && this.input.gamepad.total > 0) {
+      const pad = this.input.gamepad.getPad(0);
+
+      // Movimiento con stick izquierdo (o cruceta)
+      let axisH = 0;
+      if (pad.axes.length > 0) axisH = pad.axes[0].getValue();
+      if (Math.abs(axisH) > 0.2) moveX = axisH;
+
+      // Saltar con botón A (botón 0)
+      if (pad.buttons[0].pressed && this.player.body.touching.down) {
+        this.player.setVelocityY(this.jumpVelocity);
+      }
+      // Caída rápida con botón B (botón 1)
+      if (pad.buttons[1].pressed && !this.player.body.touching.down) {
+        this.player.setVelocityY(700);
+      }
+      // Reiniciar con botón X (botón 2)
+      if (pad.buttons[2].pressed && this.gameOverShown) {
+        this.score = 0;
+        this.scene.restart();
+      }
+      // Volver al menú con botón Y (botón 3)
+      if (pad.buttons[3].pressed && this.gameOverShown) {
+        this.scene.start('Menu');
+      }
+      // Pausa/Despausa con RB (botón 5)
+      const rbPressed = pad.buttons[5].pressed;
+      if (rbPressed && !this.lastRBPressed) {
+        if (!this.isPaused) {
+          this.showPauseMenu();
+        } else {
+          this.hidePauseMenu();
+        }
+      }
+      this.lastRBPressed = rbPressed;
+    }
+
+    // --- Movimiento horizontal ---
+    if (moveX < -0.2) {
       this.player.setVelocityX(-400);
-    } else if (this.cursors.right.isDown) {
+    } else if (moveX > 0.2) {
       this.player.setVelocityX(400);
     } else {
       this.player.setVelocityX(0);
     }
 
-    // Salto
+    // --- Salto con teclado ---
     if (
       Phaser.Input.Keyboard.JustDown(this.cursors.up) &&
       this.player.body.touching.down
@@ -144,12 +247,12 @@ export default class Game extends Phaser.Scene {
       this.player.setVelocityY(this.jumpVelocity);
     }
 
-    // BAJAR MÁS RÁPIDO EN EL AIRE
+    // --- Caída rápida con teclado ---
     if (
       this.cursors.down.isDown &&
       !this.player.body.touching.down
     ) {
-      this.player.setVelocityY(700); // Puedes ajustar el valor para más o menos velocidad de caída
+      this.player.setVelocityY(700);
     }
 
     // Generar nuevas plataformas si el jugador sube
@@ -169,15 +272,26 @@ export default class Game extends Phaser.Scene {
       });
     }
 
+    // Game over si cae demasiado abajo de la primera plataforma (incluso al inicio)
+    const limiteCaida = this.firstPlatformY + 400; // Puedes ajustar 400 a lo que prefieras
+    if (this.player.y > limiteCaida && !this.gameOverShown) {
+      this.showGameOver();
+      this.physics.pause();
+      this.input.keyboard.once('keydown-R', () => {
+        this.score = 0;
+        this.scene.restart();
+      });
+      return;
+    }
+
     // Movimiento de enemigos voladores
     this.enemies.getChildren().forEach(enemy => {
       if (!enemy || !enemy.active) return;
 
-      // Si el enemigo está muy abajo respecto al jugador, fuerza un destino arriba del jugador
       if (
         !enemy.target ||
-        enemy.y > this.player.y + 200 || // Si está muy abajo, fuerza destino arriba
-        enemy.y < this.player.y - 600 || // Si está muy arriba, fuerza destino más cerca
+        enemy.y > this.player.y + 200 ||
+        enemy.y < this.player.y - 600 ||
         (enemy.target && enemy.target.y > this.player.y - 100)
       ) {
         enemy.target = {
@@ -216,7 +330,7 @@ export default class Game extends Phaser.Scene {
     });
 
     // Siempre mantener al menos 4 enemigos activos
-    if (this.enemies.countActive(true) < 4) {
+    if (this.enemies.countActive(true) < 2) {
       let spawnX;
       do {
         spawnX = Phaser.Math.Between(100, this.scale.width - 100);
@@ -246,7 +360,7 @@ export default class Game extends Phaser.Scene {
       for (let i = 0; i < 4; i++) {
         let spawnX, spawnY, tries = 0;
         do {
-          spawnX = Phaser.Math.Between(100, this.scale.width - 100);
+          spawnX = this.player.x + Phaser.Math.Between(-250, 250);Phaser.Math.Between(100, this.scale.width - 100);
           spawnY = this.player.y + Phaser.Math.Between(-250, 250); // Alrededor del jugador
           tries++;
         } while (
@@ -258,40 +372,61 @@ export default class Game extends Phaser.Scene {
       }
       this.lastEnemyRespawnMeters = this.metros;
     }
+
+    // Detectar primer salto (teclado)
+    if (
+      this.mostrandoCartelControles &&
+      Phaser.Input.Keyboard.JustDown(this.cursors.up) &&
+      this.player.body.touching.down
+    ) {
+      this.controlesText.destroy();
+      this.mostrandoCartelControles = false;
+    }
+
+    // Detectar primer salto (mando)
+    if (
+      this.mostrandoCartelControles &&
+      this.input.gamepad && this.input.gamepad.total > 0
+    ) {
+      const pad = this.input.gamepad.getPad(0);
+      if (pad && pad.buttons[0].pressed && this.player.body.touching.down) {
+        this.controlesText.destroy();
+        this.mostrandoCartelControles = false;
+      }
+    }
   }
 
   // Genera enemigos aleatorios en la altura dada
   addEnemy(y, x = null) {
+    // Calcula el máximo de enemigos según metros
+    let maxEnemigos = 1 + Math.floor(this.metros / 800);
+    if (maxEnemigos > 4) maxEnemigos = 4;
+
     // Cuenta los enemigos actuales
     const enemies = this.enemies.getChildren().filter(e => e.active);
-    if (enemies.length >= 3) return; // Máximo 3 enemigos
+    if (enemies.length >= maxEnemigos) return;
 
-    // Cuenta los que disparan
-    const shooters = enemies.filter(e => e.type === "angel_bow" || e.type === "demon");
-    if (shooters.length >= 2) {
-      // Solo puede agregar un ángel o demonio ángel
-      if (enemies.some(e => e.type === "angel" || e.type === "demon_angel")) return;
-    }
-
-    // Solo puede haber un ángel o demonio ángel a la vez
-    if (enemies.some(e => e.type === "angel") && enemies.some(e => e.type === "demon_angel")) return;
-
-    // Decide el tipo de enemigo a spawnear
+    // Decide tipos permitidos según progreso
     let possibleTypes = [];
-    if (!enemies.some(e => e.type === "angel") && !enemies.some(e => e.type === "demon_angel")) {
-      possibleTypes.push("angel", "demon_angel");
+    if (maxEnemigos === 1) {
+      // Solo enemigos básicos (no angel ni demonio_angel)
+      possibleTypes = ["angel_bow", "demon"];
+    } else {
+      // Todos los tipos permitidos
+      possibleTypes = ["angel_bow", "demon", "angel", "demon_angel"];
     }
-    if (shooters.length < 2) {
-      possibleTypes.push("angel_bow", "demon");
+
+    // Limita a un solo ángel sin arco o demonio ángel a la vez
+    if (enemies.some(e => e.type === "angel") && possibleTypes.includes("angel")) {
+      possibleTypes = possibleTypes.filter(t => t !== "angel");
     }
+    if (enemies.some(e => e.type === "demon_angel") && possibleTypes.includes("demon_angel")) {
+      possibleTypes = possibleTypes.filter(t => t !== "demon_angel");
+    }
+
     if (possibleTypes.length === 0) return;
 
     const type = Phaser.Utils.Array.GetRandom(possibleTypes);
-
-    // Solo un ángel sin arco a la vez
-    let enemyTypes = ["angel_bow", "demon", "demon_angel"];
-    if (!this.angelAlive) enemyTypes.push("angel");
-    if (type === "angel" && this.angelAlive) return;
 
     if (x === null) {
       let tries = 0;
@@ -305,14 +440,14 @@ export default class Game extends Phaser.Scene {
 
     enemy.setCollideWorldBounds(false);
     enemy.setBounce(0);
-    enemy.patrolTarget = Phaser.Math.Between(100, this.scale.width - 100); // <-- Nueva propiedad de patrulla
+    enemy.patrolTarget = Phaser.Math.Between(100, this.scale.width - 100);
     enemy.patrolTargetY = Phaser.Math.Between(this.player.y - 300, this.player.y + 300);
 
     // Comportamiento según tipo
     if (type === "angel") {
       this.angelAlive = true;
       this.time.addEvent({
-        delay: 12000, // 12 segundos entre cada láser
+        delay: 6000, // antes era 12000
         callback: () => this.shootLaser(enemy),
         callbackScope: this,
         loop: true
@@ -334,13 +469,12 @@ export default class Game extends Phaser.Scene {
       });
     } else if (type === "demon_angel") {
       this.time.addEvent({
-        delay: 12000, // 12 segundos entre cada láser (más tiempo de recarga)
+        delay: 6000, // Láser más frecuente (antes 12000)
         callback: () => this.shootLaser(enemy),
         callbackScope: this,
         loop: true
       });
-      
-      enemy.extraSpeed = 1.7; // Factor de velocidad extra para el demonio ángel
+      enemy.extraSpeed = 1.7;
     }
   }
 
@@ -570,6 +704,13 @@ export default class Game extends Phaser.Scene {
     this.input.keyboard.once('keydown-Q', () => {
       this.scene.start('Menu');
     });
+
+    // Soporte para LB (botón 4) del mando para volver al menú
+    this.input.gamepad && this.input.gamepad.once('down', (pad, button, index) => {
+      if (index === 4) { // LB
+        this.scene.start('Menu');
+      }
+    });
   }
 
   showPauseMenu() {
@@ -611,5 +752,81 @@ export default class Game extends Phaser.Scene {
     this.pauseTexts.forEach(t => t.destroy());
     this.pauseTexts = [];
   }
+
+  showControlsMenu() {
+    this.physics.pause();
+    this.isPaused = true;
+
+    this.controlsOverlay = this.add.rectangle(
+      this.cameras.main.centerX,
+      this.cameras.main.centerY,
+      this.scale.width,
+      this.scale.height,
+      0x000000,
+      0.8
+    ).setScrollFactor(0);
+
+    this.controlsTexts = [
+      this.add.text(
+        this.cameras.main.centerX,
+        this.cameras.main.centerY - 260,
+        "CONTROLES",
+        { fontFamily: 'VT323', fontSize: "100px", color: "#fff", stroke: "#000", strokeThickness: 10 }
+      ).setOrigin(0.5).setScrollFactor(0),
+
+      // PC
+      this.add.text(
+        this.cameras.main.centerX - 350,
+        this.cameras.main.centerY - 80,
+        "PC",
+        { fontFamily: 'VT323', fontSize: "64px", color: "#fff", stroke: "#000", strokeThickness: 8 }
+      ).setOrigin(0.5).setScrollFactor(0),
+      this.add.text(
+        this.cameras.main.centerX - 350,
+        this.cameras.main.centerY + 40,
+        "Flechas: Mover y saltar\nR/X: Reiniciar\nESC: Pausa\nQ/Y/LB: Menú\nE/LT: Ver controles",
+        { fontFamily: 'VT323', fontSize: "40px", color: "#fff", stroke: "#000", strokeThickness: 6, align: "center" }
+      ).setOrigin(0.5).setScrollFactor(0),
+
+      // MANDO
+      this.add.text(
+        this.cameras.main.centerX + 350,
+        this.cameras.main.centerY - 80,
+        "MANDO",
+        { fontFamily: 'VT323', fontSize: "64px", color: "#fff", stroke: "#000", strokeThickness: 8 }
+      ).setOrigin(0.5).setScrollFactor(0),
+      this.add.text(
+        this.cameras.main.centerX + 350,
+        this.cameras.main.centerY + 40,
+        "Stick: Mover\nA: Saltar\nB: Caída rápida\nRB: Pausa/Despausa\nLB/Y/Q: Menú\nX/R: Reiniciar\nLT/E: Ver controles",
+        { fontFamily: 'VT323', fontSize: "40px", color: "#fff", stroke: "#000", strokeThickness: 6, align: "center" }
+      ).setOrigin(0.5).setScrollFactor(0),
+
+      this.add.text(
+        this.cameras.main.centerX,
+        this.cameras.main.centerY + 220,
+        "Pulsa cualquier botón o tecla para volver",
+        { fontFamily: 'VT323', fontSize: "40px", color: "#fff", stroke: "#000", strokeThickness: 6 }
+      ).setOrigin(0.5).setScrollFactor(0)
+    ];
+
+    // Salir del menú de controles con cualquier botón o tecla
+    this.input.keyboard.once('keydown', () => this.hideControlsMenu());
+    this.input.once('pointerdown', () => this.hideControlsMenu());
+    if (this.input.gamepad) {
+      this.input.gamepad.once('down', () => this.hideControlsMenu());
+    }
+  }
+
+  hideControlsMenu() {
+    this.isPaused = false;
+    this.physics.resume();
+    if (this.controlsOverlay) this.controlsOverlay.destroy();
+    if (this.controlsTexts) this.controlsTexts.forEach(t => t.destroy());
+    this.mostrandoControles = false;
+  }
 }
+
+// Haz la clase global para que main.js la vea
+window.Game = Game;
 

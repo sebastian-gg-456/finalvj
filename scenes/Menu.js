@@ -1,4 +1,4 @@
-export default class Menu extends Phaser.Scene {
+class Menu extends Phaser.Scene {
   constructor() {
     super("Menu");
   }
@@ -37,4 +37,16 @@ export default class Menu extends Phaser.Scene {
       this.scene.start('Game');
     });
   }
+
+  update() {
+    // Si hay gamepad conectado y se pulsa cualquier botón, empieza el juego
+    if (this.input.gamepad && this.input.gamepad.total > 0) {
+      const pad = this.input.gamepad.getPad(0);
+      if (pad && pad.buttons.some(b => b.pressed)) {
+        this.scene.start('Game');
+      }
+    }
+  }
 }
+
+window.Menu = Menu;
