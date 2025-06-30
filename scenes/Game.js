@@ -35,9 +35,98 @@ class Game extends Phaser.Scene {
     this.load.image("laser", "https://dummyimage.com/20x8/0ff/fff.png&text=L");
     this.load.image("arrow", "https://dummyimage.com/30x8/964B00/fff.png&text=F");
     this.load.image("fireball", "https://dummyimage.com/20x20/f80/fff.png&text=F");
+
+    this.load.spritesheet('angelc', 'public/publico/angelc.png', { frameWidth: 90, frameHeight: 50 });
+  this.load.spritesheet('angelc2', 'public/publico/angelc2.png', { frameWidth: 90, frameHeight: 50 });
+  this.load.spritesheet('caidaf', 'public/publico/caidaf.png', { frameWidth: 60, frameHeight: 60 });
+  this.load.spritesheet('caidaf2', 'public/publico/caidaf2.png', { frameWidth: 60, frameHeight: 60 });
+  this.load.image('fantasmad', 'public/publico/fantasmad.png');
+  this.load.image('fantasmai', 'public/publico/fantasmai.png');
   }
 ;
   ;create() {
+  // Animación ángel arco (pre disparo)
+  if (!this.anims.exists('angelc_pre_shoot')) {
+    this.anims.create({
+      key: 'angelc_pre_shoot',
+      frames: this.anims.generateFrameNumbers('angelc', { start: 0, end: 1 }),
+      frameRate: 8,
+      repeat: 0
+    });
+  }
+  if (!this.anims.exists('angelc2_pre_shoot')) {
+    this.anims.create({
+      key: 'angelc2_pre_shoot',
+      frames: this.anims.generateFrameNumbers('angelc2', { start: 0, end: 1 }),
+      frameRate: 8,
+      repeat: 0
+    });
+  }
+
+  // Animaciones de salto/cayendo para el jugador (fantasma)
+  if (!this.anims.exists('fantasma_salto_izq')) {
+    this.anims.create({
+      key: 'fantasma_salto_izq',
+      frames: [{ key: 'caidaf', frame: 0 }],
+      frameRate: 1,
+      repeat: -1
+    });
+  }
+  if (!this.anims.exists('fantasma_salto_der')) {
+    this.anims.create({
+      key: 'fantasma_salto_der',
+      frames: [{ key: 'caidaf2', frame: 0 }],
+      frameRate: 1,
+      repeat: -1
+    });
+  }
+    // Animación de caída rápida
+    if (!this.anims.exists('fantasma_caida_r')) {
+      this.anims.create({
+        key: 'fantasma_caida_r',
+        frames: [{ key: 'caidaf', frame: 0 }],
+        frameRate: 1,
+        repeat: -1
+      });
+    }
+    if (!this.anims.exists('fantasma_caida_l')) {
+      this.anims.create({
+        key: 'fantasma_caida_l',
+        frames: [{ key: 'caidaf2', frame: 0 }],
+        frameRate: 1,
+        repeat: -1
+      });
+    }
+
+    // Animación de disparo de láser (ángel y demonio ángel)
+    if (!this.anims.exists('laser_shoot')) {
+      this.anims.create({
+        key: 'laser_shoot',
+        frames: [{ key: 'laser', frame: 0 }],
+        frameRate: 1,
+        repeat: -1
+      });
+    }
+
+    // Animación de disparo de flecha (ángel con arco)
+    if (!this.anims.exists('arrow_shoot')) {
+      this.anims.create({
+        key: 'arrow_shoot',
+        frames: [{ key: 'arrow', frame: 0 }],
+        frameRate: 1,
+        repeat: -1
+      });
+    }
+
+    // Animación de bola de fuego (demonio)
+    if (!this.anims.exists('fireball_shoot')) {
+      this.anims.create({
+        key: 'fireball_shoot',
+        frames: [{ key: 'fireball', frame: 0 }],
+        frameRate: 1,
+        repeat: -1
+      }); 
+}
     this.enemies = this.physics.add.group(); // <-- Mueve esto antes de crear plataformas
     this.projectiles = this.physics.add.group();
     this.platforms = this.physics.add.staticGroup();
@@ -56,9 +145,21 @@ class Game extends Phaser.Scene {
     }
 
     // El jugador aparece sobre la primera plataforma
-    this.player = this.physics.add.sprite(this.firstPlatformX, this.firstPlatformY - 60, "player");
+    this.player = this.physics.add.sprite(this.firstPlatformX, this.firstPlatformY - 100, "player");
+    this.player.setScale(2);
     this.player.setBounce(0);
     this.player.setCollideWorldBounds(false);
+    this.player.body.allowGravity = true;
+
+    // Ajusta la hitbox del jugador
+    this.player.body.setSize(
+      this.player.displayWidth * 0.7,
+      this.player.displayHeight * 0.9
+    );
+    this.player.body.setOffset(
+      (this.player.displayWidth - this.player.displayWidth * 0.15),
+      (this.player.displayHeight - this.player.displayHeight * 0.05)
+    );
 
     // Texto identificador sobre el jugador
     this.playerLabel = this.add.text(0, 0, "JUGADOR", { font: "20px Arial", fill: "#00f" }).setOrigin(0.5);
@@ -205,7 +306,7 @@ class Game extends Phaser.Scene {
       if (pad.buttons[0].pressed && this.player.body.touching.down) {
         this.player.setVelocityY(this.jumpVelocity);
       }
-      // Caída rápida con botón B (botón 1)
+      // Caída rápida with botón B (botón 1)
       if (pad.buttons[1].pressed && !this.player.body.touching.down) {
         this.player.setVelocityY(700);
       }
@@ -394,6 +495,34 @@ class Game extends Phaser.Scene {
         this.mostrandoCartelControles = false;
       }
     }
+
+    if (this.player.body.velocity.y < 0) {
+      // Saltando
+      if (this.player.body.velocity.x >= 0) {
+        this.player.anims.play('fantasma_salto_der', true);
+      } else {
+        this.player.anims.play('fantasma_salto_izq', true);
+      }
+    } else if (this.player.body.velocity.x > 0) {
+      if (this.player.texture.key !== 'fantasmad') {
+        this.player.setTexture('fantasmad');
+      }
+    } else if (this.player.body.velocity.x < 0) {
+      if (this.player.texture.key !== 'fantasmai') {
+        this.player.setTexture('fantasmai');
+      }
+    } else {
+      // Quieto: mantener la última dirección de movimiento
+      if (this.player.lastDirection === 'right') {
+        if (this.player.texture.key !== 'fantasmad') {
+          this.player.setTexture('fantasmad');
+        }
+      } else {
+        if (this.player.texture.key !== 'fantasmai') {
+          this.player.setTexture('fantasmai');
+        }
+      }
+    }
   }
 
   // Genera enemigos aleatorios en la altura dada
@@ -438,10 +567,20 @@ class Game extends Phaser.Scene {
     let enemy = this.enemies.create(x, y, type);
     enemy.type = type;
 
-    enemy.setCollideWorldBounds(false);
-    enemy.setBounce(0);
-    enemy.patrolTarget = Phaser.Math.Between(100, this.scale.width - 100);
-    enemy.patrolTargetY = Phaser.Math.Between(this.player.y - 300, this.player.y + 300);
+    // Ajusta la hitbox del enemigo
+    enemy.body.setSize(
+      enemy.displayWidth * 0.7,
+      enemy.displayHeight * 0.8
+    );
+    enemy.body.setOffset(
+      (enemy.displayWidth - enemy.displayWidth * 0.7) / 2,
+      (enemy.displayHeight - enemy.displayHeight * 0.8) / 2
+    );
+
+    // Si es ángel arco, escálalo
+    if (type === "angel_bow") {
+      enemy.setScale(3.5);
+    }
 
     // Comportamiento según tipo
     if (type === "angel") {
@@ -829,4 +968,3 @@ class Game extends Phaser.Scene {
 
 // Haz la clase global para que main.js la vea
 window.Game = Game;
-
