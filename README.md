@@ -1,18 +1,33 @@
-# Phaser 3 Template
+de que trata mi juego?
 
-Plantilla para iniciar nuevos proyectos con PHASER 3.
+un alma que se cayo de el cielo y tiene que volver a subir. en el camino los angeles y demonios intentaran detenerlo
 
-Contiene configuración inicial y buenas prácticas de estructuras de carpetas.
+controles de pc
 
-## Cuando lo utilices
+flechas: moverce
+flecha para arriba: saltar
+flecha para abajo: caida rapida
 
-No te olvides de customizarlo a tus necesidades.
+esc: pausa
+Q: volver al menu principal(solo se puede cuando hayas perdido)
+R: reiniciar
+E: menu de controles
 
-1. Cuando lo utilices como Template desde el botón de GitHub, no olvides cambiar el nombre del repositorio acorde a tu proyecto en el wizard de creación de repositorios.
-1. Luego de clonar el repositorio en tu maquina local. Deberias:
-   1. Actualizar la version de Phaser a la version más actualizada en el archivo `index.html`. Ver la web: https://phaser.io/download/stable
-   1. También, dentro del `index.html` modificar el titulo de la pagina. Por ejemplo: `<title>My Game</title>`
-   1. Ejecutar el proyecto de forma local para ver que este funcionando correctamente. Si no es asi, deberias lograr que corra.
-   1. Una vez que este funcionando correctamente, hacer un commit con el mensaje "Update Phaser version and title".
-   1. Borrar los archivos dentro de la carpeta `/assets` y empezar a desarrollar.
-1. Por ultimo, una buena practica es: modificar este README.md, poner información relevante de tu juego, imagenes, videos, etc, y luego hacer un commit con el mensaje "Customize README.md".
+controles de mando
+
+palanca derecha: moverce
+A: saltar
+B: caida rapida
+
+RB: pausa
+Q: volver al menu principal(solo se puede cuando hayas perdido)
+X: reiniciar
+LT: menu de controles
+
+Jugabilidad y Reglas
+
+si saltamos encima de un enemigo lo podremos matar y daremos un pequeño rebote que podemos aprovechar para llegar mas lejos con los saltos.
+
+deberemos esquivar los proyectiles que nos lancen los enemigos o sino perderemos, si nos tocan tambien perderemos. algunos enemigos tambien nos pondran un laser por alguna zona del mapa, si lo tocas tambien pierdes.
+
+el objetivo es llegar lo mas alto posible y recolectar la mayor cantidad de puntos posible matando enemigos.

@@ -47,9 +47,13 @@ this.load.image('angelchaind', 'public/publico/angelchaind.png');
 
   // Disparo del demonio (fuego)
   this.load.image('fuego', 'public/publico/fuego.png');
+ this.load.image('flecha_up', 'ruta/a/tu/flecha_up.png');
+  this.load.image('flecha_down', 'ruta/a/tu/flecha_down.png');
   }
 ;
   create() {
+
+    
   // Animaciones
   this.anims.create({
     key: 'angelc_izq',
@@ -193,7 +197,7 @@ this.player.body.setOffset(this.player.width * 0.2, this.player.height * 0.1);
     this.controlesText = this.add.text(
       this.cameras.main.centerX,
       this.cameras.main.centerY + 350, // Más abajo
-      'Pulsa "LT/E" para ver controles',
+      'Pulsa "LT" / "E" para ver controles',
       { fontFamily: 'VT323', fontSize: "56px", color: "#fff", stroke: "#000", strokeThickness: 6 }
     ).setOrigin(0.5).setScrollFactor(0);
   }
@@ -543,26 +547,38 @@ if (this.player.body.velocity.y < 0) {
         tries++;
       } while (Math.abs(x - this.player.x) < 200 && tries < 20);
     }
-  let enemy = this.enemies.create(x, y, type);
+  let texturaInicial;
+
+if (type === "angel_bow") {
+  texturaInicial = "angelc"; // Puede ser 'angelc2' si querés que mire a la derecha
+} else if (type === "angel") {
+  texturaInicial = "angel"; // O el sprite que uses normalmente
+} else if (type === "demon") {
+  texturaInicial = "demonio";
+} else if (type === "demon_angel") {
+  texturaInicial = "angelchain";
+} else {
+  texturaInicial = type; // fallback por si acaso
+}
+
+let enemy = this.enemies.create(x, y, texturaInicial);
 enemy.type = type;
-if (type === "angel") {
-  enemy.setScale(2.5); // Ajustá el tamaño a gusto
-}
-
-
-if (type === "demon_angel") {
-  enemy.setScale(2.5); // Ajustá el tamaño a gusto
-}
-
-if (type === "demon") {
-  enemy.setScale(2.5); // O el tamaño que prefieras
-}
 
 enemy.setCollideWorldBounds(false);
 enemy.setBounce(0);
 enemy.patrolTarget = Phaser.Math.Between(100, this.scale.width - 100);
 enemy.patrolTargetY = Phaser.Math.Between(this.player.y - 300, this.player.y + 300);
 
+// Ajustes de escala y hitbox según tipo, justo aquí
+if (type === "angel_bow") {
+  enemy.setScale(3.5); // Escala para ángel con arco
+} else if (type === "demon") {
+  enemy.setScale(3); // Escala más grande para demonio
+} else if (type === "angel") {
+  enemy.setScale(2.5); // Escala del ángel normal
+} else if (type === "demon_angel") {
+  enemy.setScale(2.5); // Escala demonio ángel
+}
     // Comportamiento según tipo
     if (type === "angel") {
       this.angelAlive = true;
@@ -922,49 +938,60 @@ demonAttack(enemy) {
       0.8
     ).setScrollFactor(0);
 
-    this.controlsTexts = [
-      this.add.text(
-        this.cameras.main.centerX,
-        this.cameras.main.centerY - 260,
-        "CONTROLES",
-        { fontFamily: 'VT323', fontSize: "100px", color: "#fff", stroke: "#000", strokeThickness: 10 }
-      ).setOrigin(0.5).setScrollFactor(0),
+   // Panel de fondo para los textos de controles
+this.controlsPanel = this.add.rectangle(
+  this.cameras.main.centerX,
+  this.cameras.main.centerY,
+  1150,  // más ancho
+  650,   // más alto
+  0x000000, // negro puro
+  1// más opaco (más oscuro)
+).setScrollFactor(0).setDepth(-1); // detrás de los textos
 
-      // PC
-      this.add.text(
-        this.cameras.main.centerX - 350,
-        this.cameras.main.centerY - 100,
-        "PC",
-        { fontFamily: 'VT323', fontSize: "64px", color: "#fff", stroke: "#000", strokeThickness: 8 }
-      ).setOrigin(0.5).setScrollFactor(0),
-      this.add.text(
-        this.cameras.main.centerX - 350,
-        this.cameras.main.centerY + 40,
-        "Flechas: Mover y saltar\nR: Reiniciar\nESC: Pausa\nQ: Menú\nE: Ver controles",
-        { fontFamily: 'VT323', fontSize: "40px", color: "#fff", stroke: "#000", strokeThickness: 6, align: "center" }
-      ).setOrigin(0.5).setScrollFactor(0),
 
-      // MANDO
-      this.add.text(
-        this.cameras.main.centerX + 350,
-        this.cameras.main.centerY - 150,
-        "MANDO",
-        { fontFamily: 'VT323', fontSize: "64px", color: "#fff", stroke: "#000", strokeThickness: 8 }
-      ).setOrigin(0.5).setScrollFactor(0),
-      this.add.text(
-        this.cameras.main.centerX + 350,
-        this.cameras.main.centerY + 40,
-        "Stick: Mover\nA: Saltar\nB: Caída rápida\nRB: Pausa\nY: Menú\nX: Reiniciar\nLT: Ver controles",
-        { fontFamily: 'VT323', fontSize: "40px", color: "#fff", stroke: "#000", strokeThickness: 6, align: "center" }
-      ).setOrigin(0.5).setScrollFactor(0),
+this.controlsTexts = [
+  this.add.text(
+    this.cameras.main.centerX,
+    this.cameras.main.centerY - 260,
+    "CONTROLES",
+    { fontFamily: 'VT323', fontSize: "100px", color: "#FFE7B3", stroke: "#000", strokeThickness: 10 }
+  ).setOrigin(0.5).setScrollFactor(0),
 
-      this.add.text(
-        this.cameras.main.centerX,
-        this.cameras.main.centerY + 220,
-        "Pulsa cualquier botón o tecla para volver",
-        { fontFamily: 'VT323', fontSize: "40px", color: "#fff", stroke: "#000", strokeThickness: 6 }
-      ).setOrigin(0.5).setScrollFactor(0)
-    ];
+  // PC
+  this.add.text(
+    this.cameras.main.centerX - 350,
+    this.cameras.main.centerY - 130,
+    "PC",
+    { fontFamily: 'VT323', fontSize: "64px", color: "#FFE7B3", stroke: "#000", strokeThickness: 8 }
+  ).setOrigin(1.0).setScrollFactor(-0.1),
+  this.add.text(
+    this.cameras.main.centerX - 350,
+    this.cameras.main.centerY + 40,
+    "Flechas: Mover\nflecha de arriba: saltar\n flecha abajo:caida rapida\nR: Reiniciar\nESC: Pausa\nQ: Menú\nE: Ver controles",
+    { fontFamily: 'VT323', fontSize: "40px", color: "#FFE7B3", stroke: "#000", strokeThickness: 6, align: "center" }
+  ).setOrigin(0.5).setScrollFactor(0),
+
+  // MANDO
+  this.add.text(
+    this.cameras.main.centerX + 350,
+    this.cameras.main.centerY - 150,
+    "MANDO",
+    { fontFamily: 'VT323', fontSize: "64px", color: "#FFE7B3", stroke: "#000", strokeThickness: 8 }
+  ).setOrigin(0.5).setScrollFactor(0),
+  this.add.text(
+    this.cameras.main.centerX + 350,
+    this.cameras.main.centerY + 40,
+    "Stick: Mover\nA: Saltar\nB: Caída rápida\nRB: Pausa\nY: Menú\nX: Reiniciar\nLT: Ver controles",
+    { fontFamily: 'VT323', fontSize: "40px", color: "#FFE7B3", stroke: "#000", strokeThickness: 6, align: "center" }
+  ).setOrigin(0.5).setScrollFactor(0),
+
+  this.add.text(
+    this.cameras.main.centerX,
+    this.cameras.main.centerY + 220,
+    "Pulsa cualquier botón o tecla para volver",
+    { fontFamily: 'VT323', fontSize: "40px", color: "#FFE7B3", stroke: "#000", strokeThickness: 6 }
+  ).setOrigin(0.5).setScrollFactor(0)
+];
 
     // Salir del menú de controles con cualquier botón o tecla
     this.input.keyboard.once('keydown', () => this.hideControlsMenu());
@@ -977,6 +1004,7 @@ demonAttack(enemy) {
   hideControlsMenu() {
     this.isPaused = false;
     this.physics.resume();
+    if (this.controlsPanel) this.controlsPanel.destroy();
     if (this.controlsOverlay) this.controlsOverlay.destroy();
     if (this.controlsTexts) this.controlsTexts.forEach(t => t.destroy());
     this.mostrandoControles = false;
